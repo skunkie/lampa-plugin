@@ -1,0 +1,35 @@
+{
+  "name": "torrplay-plugin",
+  "version": "1.0.0",
+  "description": "Official TorrPlay plugin for Lampa media client",
+  "main": "dist/torrplay.js",
+  "scripts": {
+    "build": "tsc --noEmit && node build.mjs",
+    "bundle": "node build.mjs",
+    "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-exclude=\"tests/**\" --test-coverage-lines=92 --test-coverage-branches=76 --test-coverage-functions=85 \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/ tests/ landing/ build-metadata.mjs landing-page.mjs",
+    "lint:fix": "eslint src/ tests/ landing/ build-metadata.mjs landing-page.mjs --fix",
+    "test": "tsx --test \"tests/**/*.test.ts\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^22.20.2",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.10.0",
+    "eslint-plugin-es-x": "^10.0.0",
+    "eslint-plugin-perfectionist": "^5.11.0",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.0"
+  },
+  "dependencies": {
+    "uuid": "^14.0.2"
+  }
+}
