@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2026 TorrPlay
+#
+# SPDX-License-Identifier: MIT
+
+name: Bug report
+description: The plugin does something other than what it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not paste passwords, tokens, provider API keys, or private instance addresses anywhere in this form, and do not ask where to find a particular release. Requests for copyrighted material are out of scope.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: Shown in Lampa under Settings → TorrPlay → About Plugin, with the build date and commit.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android TV
+        - Android phone or tablet
+        - Samsung Tizen
+        - LG webOS
+        - Desktop browser
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Lampa build
+      description: The device or browser, its OS version, and the Lampa app version or web address you use.
+      placeholder: Example TV box, Android 11, Lampa 1.12.0
+  - type: input
+    id: server
+    attributes:
+      label: TorrPlay server version
+      description: Leave empty if the problem does not involve playback or the torrent list.
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings involved
+      description: Anything from Settings → TorrPlay that bears on the problem, such as the player choice, storage type, database persistence, preload, the authentication mode of the instance, or the search providers configured.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What you did, from opening Lampa, with an invented title in place of a real one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Include the text of any notification the plugin showed.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output
+      description: Relevant lines from the browser or WebView console, if you can reach it. Remove anything private first.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed passwords, tokens, API keys and private addresses from everything above.
+          required: true

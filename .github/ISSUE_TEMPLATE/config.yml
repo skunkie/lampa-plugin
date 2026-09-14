@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2026 TorrPlay
+#
+# SPDX-License-Identifier: MIT
+
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/skunkie/lampa-plugin#readme
+    about: Installation, settings, and how the plugin works.
+  - name: TorrPlay server issues
+    url: https://github.com/torrplay/torrplay/issues
+    about: Problems in the TorrPlay server itself rather than in the Lampa plugin.
