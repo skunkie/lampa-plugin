@@ -1,0 +1,369 @@
+// SPDX-FileCopyrightText: 2026 TorrPlay
+//
+// SPDX-License-Identifier: MIT
+
+import {
+  PreloadRequest,
+  PreloadResponse,
+  Torrent,
+  TorrentAdd,
+  TorrentsResponse,
+  TorrentUpdate,
+  TorrPlayInstance,
+  TorrPlaySettings,
+  TorrPlaySettingsUpdate,
+} from '../types/torrplay';
+import { AuthManager } from './auth';
+import { requestHttp } from './http-client';
+
+export class TorrPlayApiError extends Error {
+  public status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'TorrPlayApiError';
+    this.status = status;
+  }
+}
+
+/**
+ * Normalizes a candidate info hash to a lowercase 40-character hexadecimal string.
+ * Supports 40-character hex and 32-character base32 representations.
+ * Returns null if candidate is undefined, empty, or not a valid info hash.
+ */
+export function normalizeInfoHash(candidate?: unknown): string | null {
+  if (typeof candidate !== 'string') return null;
+  const trimmed = candidate.trim();
+  if (/^[0-9a-fA-F]{40}$/.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  if (/^[a-zA-Z2-7]{32}$/.test(trimmed)) {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz234567';
+    let bits = 0;
+    let value = 0;
+    let hex = '';
+
+    for (let i = 0; i < trimmed.length; i++) {
+      const idx = alphabet.indexOf(trimmed[i].toLowerCase());
+      if (idx === -1) return null;
+      value = (value << 5) | idx;
+      bits += 5;
+      while (bits >= 8) {
+        bits -= 8;
+        const byte = (value >>> bits) & 0xff;
+        hex += byte.toString(16).padStart(2, '0');
+      }
+    }
+
+    return hex.length === 40 ? hex : null;
+  }
+  return null;
+}
+
+export function extractHashFromMagnet(magnetUri: string): string | null {
+  if (!magnetUri) return null;
+  const match = magnetUri.match(/xt=urn:btih:([a-fA-F0-9]{40}|[a-zA-Z2-7]{32})/i);
+  if (!match) return null;
+  return normalizeInfoHash(match[1]);
+}
+
+export class TorrPlayApi {
+  /**
+   * Health check and latency measurement via GET /api/system/health.
+   */
+  public static async checkHealth(
+    instance: TorrPlayInstance,
+    timeoutMs = 4000
+  ): Promise<{ isOk: boolean, latencyMs: number }> {
+    const startedAtMs = performance.now();
+
+    try {
+      const url = `${instance.url.replace(/\/+$/, '')}/api/system/health`;
+      const response = await requestHttp(url, {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        method: 'GET',
+        timeoutMs,
+      });
+
+      const latencyMs = Math.round(performance.now() - startedAtMs);
+
+      if (response.ok) {
+        instance.status = 'online';
+        instance.latencyMs = latencyMs;
+        return { isOk: true, latencyMs };
+      } else {
+        instance.status = 'offline';
+        instance.latencyMs = Infinity;
+        return { isOk: false, latencyMs: Infinity };
+      }
+    } catch {
+      instance.status = 'offline';
+      instance.latencyMs = Infinity;
+      return { isOk: false, latencyMs: Infinity };
+    }
+  }
+
+  /**
+   * Dispatches an authenticated request to an instance.
+   */
+  private static async request<T>(
+    instance: TorrPlayInstance,
+    path: string,
+    options: RequestInit = {},
+    shouldRetryAuthentication = true
+  ): Promise<T> {
+    const authHeaders = await AuthManager.getAuthHeaders(instance);
+    const url = `${instance.url.replace(/\/+$/, '')}${path.startsWith('/') ? path : '/' + path}`;
+
+    const headers: Record<string, string> = {
+      ...authHeaders,
+      ...(options.headers as Record<string, string>),
+    };
+
+    const response = await requestHttp(url, {
+      body: options.body as string | undefined,
+      headers,
+      method: options.method || 'GET',
+    });
+
+    if (response.status === 401 && shouldRetryAuthentication && instance.authType === 'bearer') {
+      instance.jwtToken = undefined;
+      return this.request<T>(instance, path, options, false);
+    }
+
+    if (!response.ok) {
+      let errorDetail = `${response.status} ${response.statusText || ''}`.trim();
+      try {
+        const errorJson = await response.json();
+        if (typeof errorJson === 'object' && errorJson !== null) {
+          const errorBody = errorJson as Record<string, unknown>;
+          const message = typeof errorBody.message === 'string'
+            ? errorBody.message
+            : (typeof errorBody.error === 'string' ? errorBody.error : undefined);
+          if (message) errorDetail = message;
+        }
+      } catch {} // Non-JSON or malformed error body — status text fallback is already set above.
+      throw new TorrPlayApiError(`TorrPlay API error (${path}): ${errorDetail}`, response.status);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    const responseText = await response.text();
+    if (!responseText || responseText.trim() === '') {
+      return undefined as T;
+    }
+
+    return (await response.json()) as T;
+  }
+
+  /**
+   * Adds a torrent via POST /api/v1/torrents.
+   */
+  public static async addTorrent(
+    instance: TorrPlayInstance,
+    torrentRequest: TorrentAdd
+  ): Promise<Torrent> {
+    const rawMagnet = torrentRequest.magnet?.trim();
+    const isMagnet = Boolean(rawMagnet && rawMagnet.toLowerCase().startsWith('magnet:'));
+    const magnetUri = isMagnet ? rawMagnet : undefined;
+    const magnetHash = magnetUri ? extractHashFromMagnet(magnetUri) : null;
+    const hash = normalizeInfoHash(torrentRequest.hash) || magnetHash;
+
+    const payload: TorrentAdd = {
+      ...torrentRequest,
+    };
+
+    if (magnetUri) {
+      payload.magnet = magnetUri;
+    } else {
+      delete payload.magnet;
+    }
+
+    if (hash) {
+      payload.hash = hash;
+    } else {
+      delete payload.hash;
+    }
+
+    try {
+      return await this.request<Torrent>(instance, '/api/v1/torrents', {
+        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+      });
+    } catch (err: unknown) {
+      const isConflict =
+        (err instanceof TorrPlayApiError && err.status === 409) ||
+        (err instanceof Error && (
+          err.message.includes('409') ||
+          err.message.toLowerCase().includes('already exists') ||
+          err.message.toLowerCase().includes('conflict')
+        ));
+
+      if (isConflict && hash) {
+        return this.getTorrent(instance, hash);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Retrieves all saved torrents from TorrPlay database via GET /api/v1/torrents.
+   */
+  public static async getTorrents(
+    instance: TorrPlayInstance,
+    pagination?: { limit?: number, offset?: number }
+  ): Promise<TorrentsResponse> {
+    const query = new URLSearchParams();
+    if (pagination?.limit) query.append('limit', pagination.limit.toString());
+    if (pagination?.offset) query.append('offset', pagination.offset.toString());
+    const queryString = query.toString();
+    const endpoint = `/api/v1/torrents${queryString ? `?${queryString}` : ''}`;
+    return this.request<TorrentsResponse>(instance, endpoint, {
+      method: 'GET',
+    });
+  }
+
+  /**
+   * Retrieves torrent metadata and files via GET /api/v1/torrents/{hash}.
+   * Never persists the torrent to the database. When the torrent is not yet
+   * known to the instance, passing its magnet registers the magnet's own
+   * trackers instead of falling back to a bare-hash (DHT/PEX-only) lookup.
+   */
+  public static async getTorrent(
+    instance: TorrPlayInstance,
+    hash: string,
+    magnet?: string
+  ): Promise<Torrent> {
+    const query = magnet ? `?magnet=${encodeURIComponent(magnet)}` : '';
+    return this.request<Torrent>(instance, `/api/v1/torrents/${hash}${query}`, {
+      method: 'GET',
+    });
+  }
+
+  /**
+   * Removes a torrent from TorrPlay database via DELETE /api/v1/torrents/{hash}.
+   */
+  public static async deleteTorrent(
+    instance: TorrPlayInstance,
+    hash: string
+  ): Promise<void> {
+    return this.request<void>(instance, `/api/v1/torrents/${hash}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Updates torrent metadata (e.g. storage type) via PATCH /api/v1/torrents/{hash}.
+   */
+  public static async updateTorrent(
+    instance: TorrPlayInstance,
+    hash: string,
+    torrentUpdate: TorrentUpdate
+  ): Promise<Torrent> {
+    return this.request<Torrent>(instance, `/api/v1/torrents/${hash}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(torrentUpdate),
+    });
+  }
+
+  /**
+   * Retrieves instance application settings via GET /api/v1/settings.
+   */
+  public static async getSettings(
+    instance: TorrPlayInstance
+  ): Promise<TorrPlaySettings> {
+    return this.request<TorrPlaySettings>(instance, '/api/v1/settings', {
+      method: 'GET',
+    });
+  }
+
+  /**
+   * Updates instance application settings (e.g. file_storage_path) via PATCH /api/v1/settings.
+   */
+  public static async updateSettings(
+    instance: TorrPlayInstance,
+    settings: TorrPlaySettingsUpdate
+  ): Promise<void> {
+    return this.request<void>(instance, '/api/v1/settings', {
+      body: JSON.stringify(settings),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH',
+    });
+  }
+
+  /**
+   * Initiates preload via PUT /api/v1/torrents/{hash}/preload.
+   */
+  public static async startPreload(
+    instance: TorrPlayInstance,
+    hash: string,
+    preloadRequest: PreloadRequest
+  ): Promise<PreloadResponse> {
+    return this.request<PreloadResponse>(instance, `/api/v1/torrents/${hash}/preload`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(preloadRequest),
+    });
+  }
+
+  /**
+   * Retrieves current preload status via GET /api/v1/torrents/{hash}/preload.
+   */
+  public static async getPreload(
+    instance: TorrPlayInstance,
+    hash: string
+  ): Promise<PreloadResponse> {
+    return this.request<PreloadResponse>(instance, `/api/v1/torrents/${hash}/preload`, {
+      method: 'GET',
+    });
+  }
+
+  /**
+   * Cancels preload via DELETE /api/v1/torrents/{hash}/preload.
+   */
+  public static async cancelPreload(
+    instance: TorrPlayInstance,
+    hash: string
+  ): Promise<void> {
+    return this.request<void>(instance, `/api/v1/torrents/${hash}/preload`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Builds the full streaming URL with playback token attached.
+   */
+  public static async getStreamUrl(
+    instance: TorrPlayInstance,
+    hash: string,
+    fileIdentifier: { index?: number, magnet?: string, path?: string }
+  ): Promise<string> {
+    const baseUrl = instance.url.replace(/\/+$/, '');
+    let fileQueryParameter = '';
+
+    if (fileIdentifier.index !== undefined) {
+      fileQueryParameter = `index=${fileIdentifier.index}`;
+    } else if (fileIdentifier.path) {
+      fileQueryParameter = `path=${encodeURIComponent(fileIdentifier.path)}`;
+    }
+
+    let streamUrl = `${baseUrl}/api/v1/stream/${hash}?${fileQueryParameter}`;
+
+    if (fileIdentifier.magnet) {
+      streamUrl += `&magnet=${encodeURIComponent(fileIdentifier.magnet)}`;
+    }
+
+    const playbackToken = await AuthManager.getPlaybackToken(instance);
+    if (playbackToken) {
+      streamUrl += `&token=${encodeURIComponent(playbackToken)}`;
+    }
+
+    return streamUrl;
+  }
+}
