@@ -1202,6 +1202,7 @@ describe('TorrPlayEngine', () => {
   });
 
   it('reopens the file list modal (instead of falling back to the torrent card) when the player exits after picking a file', async () => {
+    let isModalOpen = false;
     let modalOpenCount = 0;
     let capturedEnterHandler: (() => Promise<void>) | undefined;
     let capturedPlayerExitCallback: (() => void) | undefined;
@@ -1222,8 +1223,11 @@ describe('TorrPlayEngine', () => {
       translate: (key: string) => key === 'title_files' ? 'Files' : key,
     };
     (globalThis as any).Lampa.Modal = {
-      close: () => {},
+      close: () => {
+        isModalOpen = false;
+      },
       open: () => {
+        isModalOpen = true;
         modalOpenCount += 1;
       },
     };
@@ -1277,8 +1281,12 @@ describe('TorrPlayEngine', () => {
     assert.ok(capturedPlayerExitCallback, 'a Player.callback exit handler should be registered');
 
     capturedPlayerExitCallback!();
+    (globalThis as any).Lampa.Modal.close();
+
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     assert.equal(modalOpenCount, 2, 'file list modal should reopen when the player exits, not the torrent card');
+    assert.equal(isModalOpen, true, 'file list modal should remain open after player exit cleanup');
   });
 
   it('resolves standard Lampa timeline hash, season, and episode for movies and TV shows', () => {

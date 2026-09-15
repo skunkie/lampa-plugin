@@ -362,7 +362,12 @@ export async function playTorrentFile(
   markTorrentViewed(sourceTorrentItem);
   Lampa.Player.callback(() => {
     if (onExit) {
-      onExit();
+      // Deferred: Lampa's own Activity.backward() runs synchronous cleanup
+      // (including closing any open modal) around player exit, so reopening
+      // the file list modal in the same tick can be immediately undone by it.
+      setTimeout(() => {
+        onExit();
+      }, 0);
     } else {
       Lampa.Controller.toggle(returnController === 'modal' ? 'content' : returnController);
     }
