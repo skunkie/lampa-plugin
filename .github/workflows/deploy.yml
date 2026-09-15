@@ -25,6 +25,7 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    name: Build and Deploy
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
