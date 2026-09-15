@@ -5,11 +5,13 @@
 import * as esbuild from 'esbuild';
 import { mkdirSync, writeFileSync } from 'fs';
 
+import { resolveBuildMetadata } from './build-metadata.mjs';
 import { generateLandingPage } from './landing-page.mjs';
 
 mkdirSync('dist', { recursive: true });
 
 const version = process.env.PLUGIN_VERSION || '0.0.0-dev';
+const { buildCommit, buildDate } = resolveBuildMetadata(process.env);
 
 const banner = `/**
  * TorrPlay Lampa Plugin v${version}
@@ -28,6 +30,8 @@ const commonOptions = {
   banner: { js: banner },
   define: {
     __PLUGIN_VERSION__: JSON.stringify(version),
+    __PLUGIN_BUILD_DATE__: JSON.stringify(buildDate),
+    __PLUGIN_BUILD_COMMIT__: JSON.stringify(buildCommit),
   },
 };
 

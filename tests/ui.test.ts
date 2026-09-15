@@ -119,6 +119,7 @@ describe('UI & Settings Integration', () => {
     assert.ok(parameterNames.includes('torrplay_selection_mode'));
     assert.ok(parameterNames.includes('torrplay_instances_btn'));
     assert.ok(parameterNames.includes('torrplay_providers_btn'));
+    assert.ok(parameterNames.includes('torrplay_about_btn'));
     assert.ok(!parameterNames.includes('torrplay_ping_btn'));
     const playbackModeParam = registeredParams.find(parameter => parameter.param.name === PLAYBACK_MODE_STORAGE_KEY);
     assert.ok(playbackModeParam);
@@ -131,11 +132,52 @@ describe('UI & Settings Integration', () => {
 
     // Verify button parameters use onChange without redundant onRender click handlers
     const buttonParams = registeredParams.filter(parameter => parameter.param.type === 'button');
-    assert.equal(buttonParams.length, 2);
+    assert.equal(buttonParams.length, 3);
     for (const buttonParameter of buttonParams) {
       assert.equal(typeof buttonParameter.onChange, 'function');
       assert.equal(buttonParameter.onRender, undefined);
     }
+  });
+
+  it('shows plugin version and build info via the About Plugin button', () => {
+    SettingsUi.init();
+
+    const aboutButton = registeredParams.find(parameter => parameter.param.name === 'torrplay_about_btn');
+    assert.ok(aboutButton && aboutButton.onChange);
+
+    let toggledController = '';
+    (globalThis as any).Lampa.Controller = {
+      ...((globalThis as any).Lampa.Controller || {}),
+      toggle: (name: string) => { toggledController = name; },
+    };
+
+    aboutButton.onChange();
+    assert.ok(lastSelectOptions);
+    assert.ok(lastSelectOptions.title.includes('About'));
+
+    const versionItem = lastSelectOptions.items.find((i: any) => i.title === 'Version');
+    assert.ok(versionItem, 'About screen must show the plugin version');
+    assert.equal(typeof versionItem.subtitle, 'string');
+    assert.ok(versionItem.subtitle.length > 0);
+
+    const buildDateItem = lastSelectOptions.items.find((i: any) => i.title === 'Build Date');
+    assert.ok(buildDateItem, 'About screen must show the build date');
+
+    const commitItem = lastSelectOptions.items.find((i: any) => i.title === 'Commit');
+    assert.ok(commitItem, 'About screen must show the build commit');
+
+    const backAction = lastSelectOptions.items.find((i: any) => i.action === 'back');
+    assert.ok(backAction);
+
+    lastSelectOptions.onSelect(versionItem);
+    assert.equal(toggledController, '', 'selecting an informational row must keep the About screen open');
+
+    lastSelectOptions.onSelect(backAction);
+    assert.equal(toggledController, 'settings_component', 'selecting Back must return focus to the settings component');
+
+    toggledController = '';
+    lastSelectOptions.onBack();
+    assert.equal(toggledController, 'settings_component', 'onBack must return focus to the settings component');
   });
 
   it('opens TV-friendly instance pool manager via Lampa.Select', () => {

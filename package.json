@@ -1,14 +1,14 @@
 {
   "name": "torrplay-plugin",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Official TorrPlay plugin for Lampa media client",
   "main": "dist/torrplay.js",
   "scripts": {
     "build": "tsc --noEmit && node build.mjs",
     "bundle": "node build.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/ tests/ landing/ landing-page.mjs",
-    "lint:fix": "eslint src/ tests/ landing/ landing-page.mjs --fix",
+    "lint": "eslint src/ tests/ landing/ build-metadata.mjs landing-page.mjs",
+    "lint:fix": "eslint src/ tests/ landing/ build-metadata.mjs landing-page.mjs --fix",
     "test": "tsx --test \"tests/**/*.test.ts\""
   },
   "keywords": [],

@@ -456,6 +456,8 @@ declare global {
   const jQuery: any;
   const Lampa: LampaNamespace;
   const __PLUGIN_VERSION__: string | undefined;
+  const __PLUGIN_BUILD_DATE__: string | undefined;
+  const __PLUGIN_BUILD_COMMIT__: string | undefined;
 }
 
 export {};

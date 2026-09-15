@@ -5,6 +5,34 @@
 export type SupportedLocale = 'en' | 'ru';
 
 export const TRANSLATIONS: Record<string, Record<SupportedLocale, string>> = {
+  torrplay_about_build_commit: {
+    en: 'Commit',
+    ru: 'Коммит',
+  },
+  torrplay_about_build_date: {
+    en: 'Build Date',
+    ru: 'Дата сборки',
+  },
+  torrplay_about_descr: {
+    en: 'View the installed plugin version and build info',
+    ru: 'Посмотреть версию плагина и информацию о сборке',
+  },
+  torrplay_about_name: {
+    en: 'About Plugin',
+    ru: 'О плагине',
+  },
+  torrplay_about_title: {
+    en: 'About TorrPlay',
+    ru: 'О TorrPlay',
+  },
+  torrplay_about_unknown: {
+    en: 'Unknown',
+    ru: 'Неизвестно',
+  },
+  torrplay_about_version: {
+    en: 'Version',
+    ru: 'Версия',
+  },
   torrplay_active_auto_badge: {
     en: ' [Active (Auto)]',
     ru: ' [Активный (Авто)]',

@@ -4,6 +4,7 @@
 
 import { InstanceManager, SelectionMode } from '../instances/instance-manager';
 import { translate } from '../lang/translations';
+import { AboutUi } from './about';
 import { InstancePoolUi } from './instance-pool';
 import { SAVE_TO_DATABASE_STORAGE_KEY, STORAGE_TYPE_STORAGE_KEY } from './play-dialog';
 import { ProviderSettingsUi } from './provider-settings';
@@ -197,6 +198,21 @@ export class SettingsUi {
         default: true,
         name: PRELOAD_ENABLED_STORAGE_KEY,
         type: 'trigger',
+      },
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: TORRPLAY_SETTINGS_COMPONENT_ID,
+      field: {
+        description: translate('torrplay_about_descr', 'View the installed plugin version and build info'),
+        name: translate('torrplay_about_name', 'About Plugin'),
+      },
+      onChange: () => {
+        AboutUi.show();
+      },
+      param: {
+        name: 'torrplay_about_btn',
+        type: 'button',
       },
     });
 

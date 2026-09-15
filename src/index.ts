@@ -10,8 +10,9 @@ import { ProviderManager } from './providers/provider-manager';
 import { CatalogChoice } from './ui/catalog-choice';
 import { SettingsUi } from './ui/settings';
 import { SidebarManager } from './ui/sidebar';
+import { PLUGIN_BUILD_COMMIT, PLUGIN_BUILD_DATE, PLUGIN_VERSION } from './version';
 
-export const PLUGIN_VERSION = typeof __PLUGIN_VERSION__ !== 'undefined' ? __PLUGIN_VERSION__ : '1.0.0';
+export { PLUGIN_BUILD_COMMIT, PLUGIN_BUILD_DATE, PLUGIN_VERSION };
 
 function initPlugin(): void {
   if (window.plugin_torrplay_ready) return;
