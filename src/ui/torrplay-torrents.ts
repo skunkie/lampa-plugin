@@ -518,11 +518,12 @@ export class TorrPlayTorrentsComponent {
   private playTorrentFileSafely(
     torrent: Torrent,
     fileIndex: number,
-    sourceInstance?: TorrPlayInstance
+    sourceInstance?: TorrPlayInstance,
+    onExit?: () => void
   ): void {
     const returnController = Lampa.Controller?.enabled?.().name || 'content';
 
-    TorrPlayEngine.startTorrentPlayback(torrent, fileIndex, undefined, sourceInstance).catch((err: unknown) => {
+    TorrPlayEngine.startTorrentPlayback(torrent, fileIndex, undefined, sourceInstance, onExit).catch((err: unknown) => {
       console.error('[TorrPlay] Playback failed:', err);
       const errorMessage = err instanceof Error ? err.message : String(err);
       if (typeof Lampa !== 'undefined') {
@@ -554,6 +555,22 @@ export class TorrPlayTorrentsComponent {
 
     const fileListElement = $('<div class="torrent-files"></div>');
     const returnController = Lampa.Controller?.enabled?.().name || 'content';
+    const title = typeof Lampa !== 'undefined' && Lampa.Lang?.translate
+      ? Lampa.Lang.translate('title_files')
+      : 'Files';
+
+    const openFileListModal = (): void => {
+      Lampa.Modal.open({
+        html: fileListElement,
+        mask: true,
+        onBack: () => {
+          Lampa.Modal.close();
+          Lampa.Controller.toggle(returnController);
+        },
+        size: 'large',
+        title,
+      });
+    };
 
     sortedFiles.forEach((file: TorrentFile, fallbackIndex: number) => {
       const fileIndex = file.index !== undefined ? file.index : fallbackIndex;
@@ -584,27 +601,13 @@ export class TorrPlayTorrentsComponent {
 
       fileItemElement.on('hover:enter', () => {
         Lampa.Modal.close();
-        Lampa.Controller.toggle(returnController);
-        this.playTorrentFileSafely(torrent, fileIndex, sourceInstance);
+        this.playTorrentFileSafely(torrent, fileIndex, sourceInstance, openFileListModal);
       });
 
       fileListElement.append(fileItemElement);
     });
 
-    const title = typeof Lampa !== 'undefined' && Lampa.Lang?.translate
-      ? Lampa.Lang.translate('title_files')
-      : 'Files';
-
-    Lampa.Modal.open({
-      html: fileListElement,
-      mask: true,
-      onBack: () => {
-        Lampa.Modal.close();
-        Lampa.Controller.toggle(returnController);
-      },
-      size: 'large',
-      title,
-    });
+    openFileListModal();
   }
 
   public async openContextMenu(torrent: Torrent, instance: TorrPlayInstance, cardElement: LampaDomElement): Promise<void> {

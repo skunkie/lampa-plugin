@@ -1201,6 +1201,86 @@ describe('TorrPlayEngine', () => {
     ]);
   });
 
+  it('reopens the file list modal (instead of falling back to the torrent card) when the player exits after picking a file', async () => {
+    let modalOpenCount = 0;
+    let capturedEnterHandler: (() => Promise<void>) | undefined;
+    let capturedPlayerExitCallback: (() => void) | undefined;
+    let playedItem: any = null;
+
+    (globalThis as any).$ = (_html: string) => {
+      const element: any = {
+        append: () => element,
+        on: () => element,
+      };
+      return element;
+    };
+    (globalThis as any).Lampa.Controller = {
+      enabled: () => ({ name: 'content' }),
+      toggle: () => {},
+    };
+    (globalThis as any).Lampa.Lang = {
+      translate: (key: string) => key === 'title_files' ? 'Files' : key,
+    };
+    (globalThis as any).Lampa.Modal = {
+      close: () => {},
+      open: () => {
+        modalOpenCount += 1;
+      },
+    };
+    (globalThis as any).Lampa.Template = {
+      get: () => {
+        const element: any = {
+          append: () => element,
+          on: (event: string, callback: any) => {
+            if (event === 'hover:enter') capturedEnterHandler = callback;
+            return element;
+          },
+        };
+        return element;
+      },
+    };
+    (globalThis as any).Lampa.Loading = { stop: () => {} };
+    (globalThis as any).Lampa.Favorite = { add: () => {} };
+    (globalThis as any).Lampa.Player = {
+      callback: (cb: () => void) => {
+        capturedPlayerExitCallback = cb;
+      },
+      play: (item: any) => {
+        playedItem = item;
+      },
+      playlist: () => {},
+    };
+
+    storageMap.set(PRELOAD_ENABLED_STORAGE_KEY, false);
+
+    displayFileList(
+      { authType: 'none', id: 'test', name: 'Test Node', url: 'http://127.0.0.1:8090' },
+      {
+        files: [
+          { index: 0, length: 1000, name: 'part-1.mp4', path: 'part-1.mp4' },
+          { index: 1, length: 1000, name: 'part-2.mp4', path: 'part-2.mp4' },
+        ],
+        hash: 'multi-exit-test',
+        name: 'Part Series',
+        storage: 'memory',
+        title: 'Part Series',
+        total_size: 2000,
+      }
+    );
+
+    assert.equal(modalOpenCount, 1, 'file list modal should open initially');
+    assert.ok(capturedEnterHandler, 'hover:enter handler should be registered on each file item');
+
+    await capturedEnterHandler!();
+
+    assert.ok(playedItem, 'selecting a file should start playback');
+    assert.ok(capturedPlayerExitCallback, 'a Player.callback exit handler should be registered');
+
+    capturedPlayerExitCallback!();
+
+    assert.equal(modalOpenCount, 2, 'file list modal should reopen when the player exits, not the torrent card');
+  });
+
   it('resolves standard Lampa timeline hash, season, and episode for movies and TV shows', () => {
     // Single movie: hash must match movie.original_title
     const movieInfo = TorrPlayEngine.resolveFileInfo(

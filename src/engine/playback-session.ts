@@ -137,6 +137,20 @@ export function displayFileList(
   });
 
   const fileListElement = $('<div class="torrent-files"></div>');
+  const returnController = Lampa.Controller?.enabled?.().name || 'content';
+
+  const openFileListModal = (): void => {
+    Lampa.Modal.open({
+      html: fileListElement,
+      mask: true,
+      onBack: () => {
+        Lampa.Modal.close();
+        Lampa.Controller.toggle(returnController);
+      },
+      size: 'large',
+      title: Lampa.Lang?.translate('title_files') || 'Files',
+    });
+  };
 
   playlist.forEach((playlistItem, playlistIndex) => {
     const extensionPosition = playlistItem.title.lastIndexOf('.');
@@ -172,25 +186,15 @@ export function displayFileList(
         mediaMetadata,
         'content',
         resolvedMagnet,
-        sourceTorrentItem
+        sourceTorrentItem,
+        openFileListModal
       );
     });
 
     fileListElement.append(fileItemElement);
   });
 
-  const returnController = Lampa.Controller?.enabled?.().name || 'content';
-
-  Lampa.Modal.open({
-    html: fileListElement,
-    mask: true,
-    onBack: () => {
-      Lampa.Modal.close();
-      Lampa.Controller.toggle(returnController);
-    },
-    size: 'large',
-    title: Lampa.Lang?.translate('title_files') || 'Files',
-  });
+  openFileListModal();
 }
 
 export async function playTorrentFile(
@@ -202,7 +206,8 @@ export async function playTorrentFile(
   movie?: LampaMovie,
   returnController = 'content',
   magnet?: string,
-  sourceTorrentItem?: LampaTorrentItem
+  sourceTorrentItem?: LampaTorrentItem,
+  onExit?: () => void
 ): Promise<void> {
   const resolvedMovie = resolveMovieContext(movie);
   const poster = resolvePosterUrl(undefined, resolvedMovie) || playlistItem.img || '';
@@ -356,7 +361,11 @@ export async function playTorrentFile(
   Lampa.Player.play(playerItem);
   markTorrentViewed(sourceTorrentItem);
   Lampa.Player.callback(() => {
-    Lampa.Controller.toggle(returnController === 'modal' ? 'content' : returnController);
+    if (onExit) {
+      onExit();
+    } else {
+      Lampa.Controller.toggle(returnController === 'modal' ? 'content' : returnController);
+    }
   });
 
   if (typeof Lampa !== 'undefined' && Lampa.Listener && typeof Lampa.Listener.send === 'function') {

@@ -1749,6 +1749,86 @@ describe('UI & Settings Integration', () => {
     assert.equal(toggledController, 'content', 'onBack must toggle back to content controller');
   });
 
+  it('reopens the file list modal (instead of falling back to the torrent card) when the player exits after picking a file from the grid', () => {
+    let modalOpenCount = 0;
+    const templatedItems: any[] = [];
+
+    (globalThis as any).Lampa.Modal = {
+      close: () => {},
+      open: () => { modalOpenCount += 1; },
+    };
+    (globalThis as any).Lampa.Utils = {
+      bytesToSize: (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`,
+      clearHtmlTags: (value: string) => value,
+      hash: (value: string) => value,
+    };
+    (globalThis as any).Lampa.Controller = {
+      enabled: () => ({ name: 'torrplay_torrents' }),
+      toggle: () => {},
+    };
+    (globalThis as any).$ = (_html?: string) => {
+      const listeners: Record<string, any> = {};
+      const el: any = {
+        append: (_child: any) => el,
+        on: (eventName: string, callback: any) => { listeners[eventName] = callback; return el; },
+        __listeners: listeners,
+      };
+      return el;
+    };
+    (globalThis as any).Lampa.Template = {
+      get: () => {
+        const el = (globalThis as any).$('<div class="torrent-file selector"></div>');
+        templatedItems.push(el);
+        return el;
+      },
+    };
+    (globalThis as any).Lampa.Scroll = class {
+      append(_e: any) {}
+      minus() {}
+      render(_js?: boolean) { return (globalThis as any).$('<div>'); }
+      update() {}
+    };
+
+    let capturedOnExit: (() => void) | undefined;
+    const originalStartTorrentPlayback = TorrPlayEngine.startTorrentPlayback;
+    (TorrPlayEngine as any).startTorrentPlayback = async (
+      _torrent: any,
+      _fileIndex: number,
+      _movie: any,
+      _sourceInstance: any,
+      onExit: () => void
+    ) => {
+      capturedOnExit = onExit;
+    };
+
+    try {
+      const component = new TorrPlayTorrentsComponent();
+      const multiFileTorrent: any = {
+        files: [
+          { index: 0, length: 734003200, name: 'episode.S01E01.mkv', path: 'episode.S01E01.mkv' },
+          { index: 1, length: 734003200, name: 'episode.S01E02.mkv', path: 'episode.S01E02.mkv' },
+        ],
+        hash: 'multi-exit-test',
+        name: 'My Show S01',
+        title: 'My Show S01',
+      };
+
+      component.openTorrent(multiFileTorrent);
+      assert.equal(modalOpenCount, 1, 'file list modal should open initially');
+      assert.equal(templatedItems.length, 2, 'both video files should be templated');
+
+      templatedItems[0].__listeners['hover:enter']();
+
+      assert.ok(capturedOnExit, 'startTorrentPlayback must receive an onExit callback for reopening the list');
+
+      capturedOnExit!();
+
+      assert.equal(modalOpenCount, 2, 'file list modal should reopen when the player exits, not the torrent card');
+    } finally {
+      TorrPlayEngine.startTorrentPlayback = originalStartTorrentPlayback;
+    }
+  });
+
   it('shows an error notice and stops loading when playback fails from the database torrents browser', async () => {
     const notyMessages: string[] = [];
     let loadingStopped = false;

@@ -453,7 +453,8 @@ export class TorrPlayEngine {
     torrent: Torrent,
     fileIndex = 0,
     movie?: LampaMovie,
-    sourceInstance?: TorrPlayInstance
+    sourceInstance?: TorrPlayInstance,
+    onExit?: () => void
   ): Promise<void> {
     const instance = sourceInstance || await InstanceManager.getBestInstance();
     const readyTorrent = torrent.files && torrent.files.length > 0
@@ -523,7 +524,9 @@ export class TorrPlayEngine {
       playlist,
       mediaMetadata,
       'content',
-      readyTorrent.magnet
+      readyTorrent.magnet,
+      undefined,
+      onExit
     );
   }
 
