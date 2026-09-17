@@ -1,0 +1,423 @@
+// SPDX-FileCopyrightText: 2026 TorrPlay
+//
+// SPDX-License-Identifier: MIT
+
+import { TorrPlayApi } from '../api/torrplay';
+import { translate } from '../lang/translations';
+import { Torrent, TorrentFile, TorrPlayInstance } from '../types/torrplay';
+import { buildFileListItemElement } from '../ui/file-list-item';
+import { PRELOAD_ENABLED_STORAGE_KEY } from '../ui/settings';
+import { closeModalSafely, markTorrentViewed, recordWatchedHistory } from './engine-utils';
+import { collectSeasonNumbers, fetchSeasonEpisodes, resolveEpisodePreview } from './episode-preview';
+import { ExternalPlaybackFile, ExternalProgress } from './external-progress';
+import { resolveFileIndex, resolveFileInfo, sortTorrentFiles, VIDEO_EXTENSIONS } from './file-parser';
+import { resolveMovieContext, resolvePosterUrl } from './media-context';
+import { rememberPlayerPlaylist } from './player-playlist';
+
+export async function playSingleVideoFile(
+  instance: TorrPlayInstance,
+  torrent: Torrent,
+  singleFile: TorrentFile,
+  movie?: LampaMovie,
+  torrentMagnet?: string,
+  sourceTorrentItem?: LampaTorrentItem,
+  returnController = 'content'
+): Promise<void> {
+  const resolvedMovie = resolveMovieContext(movie);
+  const poster = resolvePosterUrl(torrent, resolvedMovie);
+  const mediaMetadata: LampaMovie = resolvedMovie || {
+    card: torrent,
+    first_title: torrent.title || torrent.name,
+    img: poster || torrent.poster,
+    movie: torrent,
+    title: torrent.title || torrent.name,
+  };
+
+  const resolvedMagnet = torrentMagnet || torrent.magnet;
+  const cleanTitle = Lampa.Utils?.clearHtmlTags
+    ? Lampa.Utils.clearHtmlTags(singleFile.name || singleFile.path.split('/').pop() || 'Video')
+    : (singleFile.name || singleFile.path.split('/').pop() || 'Video');
+  const sizeString = Lampa.Utils?.bytesToSize
+    ? Lampa.Utils.bytesToSize(singleFile.length)
+    : String(singleFile.length);
+
+  const originalFileIndex = resolveFileIndex(torrent.files || [], singleFile);
+  const targetFileIndex = originalFileIndex >= 0 ? originalFileIndex : 0;
+
+  const fileInfo = resolveFileInfo(singleFile, mediaMetadata, torrent.hash);
+  const singlePlaylistItem = {
+    episode: fileInfo.episode,
+    file_index: targetFileIndex,
+    fname: singleFile.name || singleFile.path,
+    id: 0,
+    path: singleFile.path,
+    season: fileInfo.season,
+    size: sizeString,
+    title: cleanTitle,
+    torrent_hash: torrent.hash,
+  };
+
+  await playTorrentFile(
+    instance,
+    torrent.hash,
+    targetFileIndex,
+    singlePlaylistItem,
+    [singlePlaylistItem],
+    mediaMetadata,
+    returnController,
+    resolvedMagnet,
+    sourceTorrentItem
+  );
+}
+
+export async function displayFileList(
+  instance: TorrPlayInstance,
+  torrent: Torrent,
+  movie?: LampaMovie,
+  torrentMagnet?: string,
+  sourceTorrentItem?: LampaTorrentItem,
+  sourceController?: string
+): Promise<void> {
+  const torrentFiles: TorrentFile[] = torrent.files || [];
+  const videoFiles = torrentFiles.filter(file => {
+    const extension = file.path.split('.').pop()?.toLowerCase() || '';
+    return VIDEO_EXTENSIONS.includes(extension);
+  });
+
+  if (videoFiles.length === 0) {
+    if (Lampa.Noty) {
+      Lampa.Noty.show(translate('torrplay_noty_no_video', 'No video files found in torrent'));
+    }
+    return;
+  }
+
+  const sortedVideoFiles = sortTorrentFiles(videoFiles);
+
+  const resolvedMovie = resolveMovieContext(movie);
+  const poster = resolvePosterUrl(torrent, resolvedMovie);
+  const mediaMetadata: LampaMovie = resolvedMovie || {
+    card: torrent,
+    first_title: torrent.title || torrent.name,
+    img: poster || torrent.poster,
+    movie: torrent,
+    title: torrent.title || torrent.name,
+  };
+
+  const resolvedMagnet = torrentMagnet || torrent.magnet;
+
+  // If single video file, start directly
+  if (sortedVideoFiles.length === 1) {
+    void playSingleVideoFile(
+      instance,
+      torrent,
+      sortedVideoFiles[0],
+      movie,
+      resolvedMagnet,
+      sourceTorrentItem,
+      sourceController
+    );
+    return;
+  }
+
+  const fileInfos = sortedVideoFiles.map(file => resolveFileInfo(file, mediaMetadata, torrent.hash, sortedVideoFiles));
+
+  // Build playlist objects for Lampa
+  const playlist = sortedVideoFiles.map((file, playlistIndex) => {
+    const cleanTitle = Lampa.Utils.clearHtmlTags(
+      file.name || file.path.split('/').pop() || `File ${playlistIndex + 1}`
+    );
+    const originalFileIndex = resolveFileIndex(torrentFiles, file);
+    const fileInfo = fileInfos[playlistIndex];
+    return {
+      episode: fileInfo.episode,
+      file_index: originalFileIndex >= 0 ? originalFileIndex : playlistIndex,
+      fname: cleanTitle,
+      id: playlistIndex,
+      path: file.path,
+      season: fileInfo.season,
+      size: Lampa.Utils.bytesToSize(file.length),
+      title: cleanTitle,
+      torrent_hash: torrent.hash,
+    };
+  });
+
+  // Matches Lampa's native torrent file list: fetch TMDB episode metadata up
+  // front so multi-episode entries can render with a still image, episode
+  // name, and air date instead of the plain title-only row.
+  const seasonsData = await fetchSeasonEpisodes(mediaMetadata, collectSeasonNumbers(fileInfos));
+
+  const fileListElement = $('<div class="torrent-files"></div>');
+  // Callers that opened this list from a menu pass the controller that was active before it
+  // opened, since by now the menu's own controller is the enabled one.
+  const returnController = sourceController || Lampa.Controller?.enabled?.().name || 'content';
+
+  const openFileListModal = (): void => {
+    Lampa.Modal.open({
+      html: fileListElement,
+      mask: true,
+      onBack: () => {
+        Lampa.Modal.close();
+        Lampa.Controller.toggle(returnController);
+      },
+      size: 'large',
+      title: Lampa.Lang?.translate('title_files') || 'Files',
+    });
+    // Modal.open updates lazy row visibility after its initial focus attempt.
+    Lampa.Controller?.collectionFocus?.(false, fileListElement);
+  };
+
+  playlist.forEach((playlistItem, playlistIndex) => {
+    const extensionPosition = playlistItem.title.lastIndexOf('.');
+    const extension = extensionPosition > 0 ? playlistItem.title.slice(extensionPosition + 1) : '';
+    const title = extensionPosition > 0
+      ? playlistItem.title.slice(0, extensionPosition)
+      : playlistItem.title;
+    const fileInfo = fileInfos[playlistIndex];
+    const preview = resolveEpisodePreview(fileInfo, seasonsData, poster);
+    const timeline = Lampa.Timeline
+      ? Lampa.Timeline.view(fileInfo.hash)
+      : undefined;
+
+    const fileItemElement = buildFileListItemElement({
+      exe: extension,
+      fileInfo,
+      preview,
+      size: playlistItem.size,
+      timeline,
+      title,
+    });
+
+    fileItemElement.on('hover:enter', () => {
+      const targetFileIndex = playlistItem.file_index !== undefined
+        ? playlistItem.file_index
+        : playlistIndex;
+      // Keep the file list modal open so the player exit callback can refocus it.
+      void playTorrentFile(
+        instance,
+        torrent.hash,
+        targetFileIndex,
+        playlistItem,
+        playlist,
+        mediaMetadata,
+        'modal',
+        resolvedMagnet,
+        sourceTorrentItem
+      ).catch((err: unknown) => {
+        console.error('[TorrPlay] Playback failed:', err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        if (Lampa.Loading) Lampa.Loading.stop();
+        Lampa.Controller.toggle('modal');
+        if (Lampa.Noty) {
+          Lampa.Noty.show(
+            translate('torrplay_noty_error', `TorrPlay: ${errorMessage}`, { msg: errorMessage })
+          );
+        }
+      });
+    });
+
+    fileListElement.append(fileItemElement);
+  });
+
+  openFileListModal();
+}
+
+export async function playTorrentFile(
+  instance: TorrPlayInstance,
+  torrentHash: string,
+  fileIndex: number,
+  playlistItem: LampaPlaylistItem,
+  playlist: LampaPlaylistItem[],
+  movie?: LampaMovie,
+  returnController = 'content',
+  magnet?: string,
+  sourceTorrentItem?: LampaTorrentItem
+): Promise<boolean> {
+  const resolvedMovie = resolveMovieContext(movie);
+  const poster = resolvePosterUrl(undefined, resolvedMovie) || playlistItem.img || '';
+  const title =
+    resolvedMovie?.title ||
+    resolvedMovie?.name ||
+    playlistItem.title ||
+    playlistItem.fname ||
+    'Torrent';
+  const historyCard: LampaMovie = resolvedMovie?.id !== undefined
+    ? { ...resolvedMovie }
+    : { ...resolvedMovie, img: poster, title };
+
+  const fileInfo = resolveFileInfo(playlistItem, historyCard, torrentHash, playlist);
+  const playbackPositionSeconds = resolvePlaybackPositionSeconds(
+    Lampa.Timeline ? Lampa.Timeline.view(fileInfo.hash) : undefined
+  );
+
+  const shouldPreload = Lampa.Storage.get(PRELOAD_ENABLED_STORAGE_KEY, true);
+
+  if (shouldPreload) {
+    const { PreloadModal } = await import('../ui/preload-modal');
+    const loadingMedia = {
+      card: historyCard,
+      first_title: historyCard.name || historyCard.title,
+      img: poster,
+      movie: historyCard,
+      title: playlistItem.title || playlistItem.fname,
+    };
+    const isPreloadReady = await PreloadModal.waitUntilReady(
+      instance,
+      torrentHash,
+      { index: fileIndex, magnet, path: playlistItem.path },
+      loadingMedia,
+      playbackPositionSeconds
+    );
+    if (!isPreloadReady) return false; // User cancelled preload
+  }
+
+  // Resolve final stream URL with playback token attached
+  const streamUrl = await TorrPlayApi.getStreamUrl(instance, torrentHash, {
+    index: fileIndex,
+    magnet,
+    path: playlistItem.path,
+  });
+
+  const playerTimeline = Lampa.Timeline
+    ? Lampa.Timeline.view(fileInfo.hash)
+    : undefined;
+
+  // A 'modal' returnController means the caller deliberately left its file
+  // list modal open behind us (matching Lampa's native torrent.js behavior)
+  // so it can be refocused via Controller.toggle('modal') on player exit;
+  // closing it here would destroy the very screen we're meant to return to.
+  if (returnController !== 'modal') {
+    closeModalSafely();
+  }
+
+  const mappedPlaylist = playlist.map((candidateItem, candidateIndex) => {
+    const targetIndex = candidateItem.file_index !== undefined
+      ? candidateItem.file_index
+      : candidateIndex;
+    const candidateInfo = resolveFileInfo(candidateItem, historyCard, torrentHash, playlist);
+    const candidateTimeline = Lampa.Timeline
+      ? Lampa.Timeline.view(candidateInfo.hash)
+      : undefined;
+    const isCurrentFile = targetIndex === fileIndex;
+
+    const mappedItem: LampaPlayerItem = {
+      ...candidateItem,
+      ad: false,
+      card: historyCard,
+      episode: candidateInfo.episode,
+      first_title: historyCard.name || historyCard.title,
+      movie: historyCard,
+      no_ad: true,
+      season: candidateInfo.season,
+      timeline: candidateTimeline,
+      torrent_hash: torrentHash,
+      url: isCurrentFile
+        ? streamUrl
+        : (callback?: () => void) => {
+          TorrPlayApi.getStreamUrl(instance, torrentHash, {
+            index: targetIndex,
+            magnet,
+            path: candidateItem.path,
+          }).then(resolvedUrl => {
+            mappedItem.url = resolvedUrl;
+            if (typeof callback === 'function') callback();
+          }).catch(() => {
+            if (typeof callback === 'function') callback();
+          });
+        },
+    };
+    return mappedItem;
+  });
+
+  const currentPlaylistIndex = mappedPlaylist.findIndex(item => item.file_index === fileIndex);
+
+  let playerItem: LampaPlayerItem;
+  if (currentPlaylistIndex >= 0) {
+    playerItem = mappedPlaylist[currentPlaylistIndex];
+    if (playerTimeline) playerItem.timeline = playerTimeline;
+  } else {
+    playerItem = {
+      ...playlistItem,
+      ad: false,
+      card: historyCard,
+      episode: fileInfo.episode,
+      first_title: historyCard.name || historyCard.title,
+      movie: historyCard,
+      no_ad: true,
+      season: fileInfo.season,
+      timeline: playerTimeline,
+      torrent_hash: torrentHash,
+      url: streamUrl,
+    };
+    if (mappedPlaylist.length === 0) {
+      mappedPlaylist.push(playerItem);
+    }
+  }
+
+  playerItem.continue_play = true;
+  playerItem.torrent = true;
+  for (const item of mappedPlaylist) {
+    item.continue_play = true;
+    item.torrent = true;
+  }
+
+  if (historyCard.id !== undefined && typeof Lampa !== 'undefined' && typeof Lampa.Favorite?.add === 'function') {
+    Lampa.Favorite.add('history', historyCard, 100);
+  }
+  recordWatchedHistory(historyCard, playerItem);
+
+  ExternalProgress.arm({
+    files: (mappedPlaylist.includes(playerItem) ? mappedPlaylist : [playerItem, ...mappedPlaylist])
+      .reduce<ExternalPlaybackFile[]>((files, item) => {
+        const timelineHash = (item.timeline as { hash?: number | string } | undefined)?.hash;
+        if (item.path && timelineHash !== undefined) {
+          files.push({ episode: item.episode, hash: timelineHash, path: item.path, season: item.season });
+        }
+        return files;
+      }, []),
+    instance,
+    movie: historyCard,
+    torrentHash,
+  });
+
+  if (typeof Lampa !== 'undefined' && Lampa.Player && typeof Lampa.Player.playlist === 'function') {
+    rememberPlayerPlaylist(mappedPlaylist);
+    Lampa.Player.playlist(mappedPlaylist);
+  }
+  Lampa.Player.play(playerItem);
+  markTorrentViewed(sourceTorrentItem);
+  Lampa.Player.callback(() => {
+    Lampa.Controller.toggle(returnController);
+  });
+
+  if (typeof Lampa !== 'undefined' && Lampa.Listener && typeof Lampa.Listener.send === 'function') {
+    Lampa.Listener.send('torrent_file', {
+      element: playerItem,
+      item: null,
+      items: playlist,
+      params: {
+        files: playlist,
+        movie: historyCard,
+      },
+      type: 'onenter',
+    });
+  }
+  return true;
+}
+
+function resolvePlaybackPositionSeconds(timeline: unknown): number | undefined {
+  // Only an unconditional resume is known to start at the saved position; in
+  // 'ask' mode the viewer may still choose to start from the beginning.
+  if (Lampa.Storage.field('player_timecode') !== 'continue') return undefined;
+  if (!timeline || typeof timeline !== 'object') return undefined;
+
+  const candidate = timeline as { percent?: unknown, time?: unknown };
+  // The player skips resuming a file that is nearly finished or barely started.
+  if (Number(candidate.percent) >= 90) return undefined;
+  const playbackPositionSeconds = Number(candidate.time);
+  if (
+    !isFinite(playbackPositionSeconds)
+    || playbackPositionSeconds <= 10
+  ) return undefined;
+
+  return playbackPositionSeconds;
+}
