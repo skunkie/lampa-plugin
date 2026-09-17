@@ -127,6 +127,7 @@ declare global {
   interface LampaNavigator {
     canmove?: (direction: 'up' | 'down' | 'left' | 'right') => boolean,
     focused?: (element: HTMLElement) => void,
+    getFocusedElement?: () => HTMLElement | null,
     move(direction: 'up' | 'down' | 'left' | 'right'): void
   }
 
@@ -202,6 +203,8 @@ declare global {
   interface LampaSelectItem<T = unknown> {
     action?: string,
     data?: T,
+    ghost?: boolean,
+    noenter?: boolean,
     onSelect?: (element: LampaDomElement, selectedItem: LampaSelectItem<T>) => void,
     selected?: boolean,
     subtitle?: string,

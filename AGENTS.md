@@ -75,6 +75,7 @@ src/
    - Display Lampa's native fullscreen media loading screen (`Lampa.Loading.start(..., { media })`), showing movie backdrop, buffer progress percentage, loaded bytes vs. target bytes, download speed (in Mbit/s), and peer stats.
    - Hand off to `Lampa.Player.play()` once the buffer reaches readiness or threshold (>= 95%).
    - Cancel preloading via `DELETE /api/v1/torrents/{hash}/preload` if dismissed by the user.
+   - The preload modal abandons a preload on inactivity, not on a deadline: the clock resets on every poll that reports more bytes, and a torrent that has yet to deliver any is given a wider opening window (metadata resolution alone can occupy the instance for a good while) in which arriving peers also count as movement. The preload start request outlasts that metadata wait rather than abandoning a call the instance is still working on, and the opening window only starts counting once that request succeeds — the instance bounds the metadata wait itself and answers `504` once it lapses, so a failed start keeps the elapsed time rather than being granted a fresh window.
    - Unconditionally set `torrent: true` and `continue_play: true` on the player item and every entry of the playlist handed to `Lampa.Player.playlist()` — these are the flags Lampa's own player reads to exempt playback from VAST preroll ads, and TorrPlay playback is always genuinely torrent playback, so there is no configurable "prevent ads" setting.
 
 5. **Authentication & Token Management**:
@@ -91,13 +92,14 @@ src/
 7. **Sidebar & Database Torrents (`torrplay_torrents`)**:
    - Add a dedicated "TorrPlay" entry to Lampa's main sidebar menu, positioned as the second item (right after whichever item the menu list currently has first), since native items are always appended to the end and never displace it.
    - Register custom component `torrplay_torrents` (`Lampa.Component.add`) to list torrents retrieved via `GET /api/v1/torrents`, supporting direct playback, multi-file selection, movie card details navigation (`title_card`), dynamic mark/unmark viewed toggle (`torrents_view`), storage switching (`PATCH /api/v1/torrents/{hash}`), and database deletion (`DELETE /api/v1/torrents/{hash}`).
+   - `GET /api/v1/torrents` returns the database rows **and** every torrent merely loaded in the torrent client, and only a database row carries `created_at`. A client-only entry has no row for `PATCH /api/v1/torrents/{hash}` to update, so the storage switch is offered only for entries that carry `created_at`.
    - Do not hook or monkey-patch the legacy `Lampa.Torserver` API (`.my`, `.add`, `.remove`, `.ip`, etc.). TorrPlay's own sidebar entry and `torrplay_torrents` component are the sole, self-contained surface for browsing and managing TorrPlay's database — native TorrServer integration is intentionally left untouched.
    - In "Always TorrPlay" mode (`torrplay_playback_mode: 'torrplay'`), hide native TorrServer entry points (sidebar item, settings folder, torrent-view button) via the `torrplay--hide-torrserver` body class instead of intercepting their handlers.
 
 8. **Torrent Card Player Choice, Routing, & Context Menu Actions**:
    - Provide a clean context menu (`torrent` event on `onlong`) on torrent cards:
      - "Play via TorrPlay" at the top for immediate streaming.
-     - "Save to TorrPlay" for persistent library database storage.
+     - "Save to TorrPlay" for persistent library database storage, replaced by an inactive "Already in TorrPlay" row once the torrent is known to be stored. Lampa builds this menu synchronously, so `SavedTorrents` (`src/engine/saved-torrents.ts`) resolves that state ahead of time: card `render` events queue the info hash, and a debounced batch resolves them through the `hashes` filter of `GET /api/v1/torrents`. An unresolved hash keeps the save action. The cache is per-database, so it is dropped whenever `InstanceManager` reroutes requests (selection mode, selected instance, or pool membership) — nothing else forces a re-lookup, since a hash that is already cached is never queued again.
      - Dynamic viewed toggle: present only "Mark as viewed" if unviewed, or "Remove mark" if already viewed.
      - Strip native TorrServer `tomy: true` in "Always TorrPlay" mode (`torrplay_playback_mode: 'torrplay'`).
    - Intercept `Lampa.Torrent.start` to route playback according to configurable playback mode (`torrplay_playback_mode`: `ask`, `torrplay`, `context`) seamlessly through Lampa's native playback actions.

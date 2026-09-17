@@ -29,20 +29,15 @@ export interface TorrPlaySettings {
   file_storage_path?: string
 }
 
-export interface TorrPlaySettingsUpdate {
-  [key: string]: unknown,
-  enable_downloader?: boolean,
-  file_storage_path?: string
-}
-
 export interface TorrentFile {
-  index?: number,
   length: number,
   name: string,
   path: string
 }
 
 export interface Torrent {
+  active?: boolean,
+  created_at?: string,
   data?: string,
   files: TorrentFile[],
   hash: string,
@@ -52,7 +47,8 @@ export interface Torrent {
   storage: TorrentStorage,
   title?: string,
   total_size: number,
-  totalSize?: number
+  totalSize?: number,
+  updated_at?: string
 }
 
 export interface TorrentsResponse {
