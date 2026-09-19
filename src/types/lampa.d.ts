@@ -149,6 +149,7 @@ declare global {
     ffprobe?: LampaFfprobeStream[],
     hash: string,
     info?: { quality?: number, voices?: string[] },
+    InfoHash?: string,
     languages?: string[],
     Link?: string,
     MagnetUri: string,

@@ -47,8 +47,8 @@ function toProviderSearchMovie(movie?: LampaMovie): ProviderSearchMovie | undefi
 /**
  * Maps our internal search result back into the raw item shape Lampa's native
  * torrent list/card renderer expects (Title, Tracker, Size, size, Seeders, Peers,
- * MagnetUri, Link, hash, source_rank, checked_at, ffprobe, info) — verified against the fields
- * Lampa's own bundled Jackett/Prowlarr/TorrServer parsers already populate, and
+ * MagnetUri, Link, InfoHash, hash, source_rank, checked_at, ffprobe, info) — verified
+ * against the fields Lampa's own bundled Jackett/Prowlarr/TorrServer parsers populate, and
  * against its card_parser/torrent-item templates that render them directly (a
  * field left out here renders as the literal string "undefined" in the UI, since
  * Lampa's templating does plain string interpolation with no fallback).
@@ -67,6 +67,12 @@ function toLampaResultItem(result: ProviderSearchResult, index: number): LampaPa
     ffprobe: result.ffprobe,
     hash,
     info: result.info,
+    // The indexer's own info hash, kept apart from `hash` above: that one is a
+    // hash of the title and identifies the card, while this identifies the
+    // torrent. Without it a release the indexer described by hash alone, with no
+    // magnet to read one out of, reaches playback looking like it has no source
+    // but its download link -- which the non-persisting path cannot use.
+    InfoHash: result.hash,
     Link: result.downloadUrl,
     languages: result.languages,
     MagnetUri: result.magnetUri || '',

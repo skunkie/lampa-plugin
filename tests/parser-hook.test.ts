@@ -150,6 +150,38 @@ describe('ParserHook', () => {
     assert.deepEqual(received.Results[0].info.voices, ['LostFilm']);
   });
 
+  it('carries the indexer\'s info hash through for a release that has no magnet', async () => {
+    ProviderManager.addProvider({
+      apiKey: 'k', id: 'p1', isEnabled: true, name: 'Jackett', type: 'jackett', url: 'http://jackett.local:9117',
+    });
+
+    const infoHash = 'C'.repeat(40);
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      Results: [{
+        InfoHash: infoHash,
+        Link: 'http://jackett.local:9117/dl/tracker/abc.torrent',
+        Seeders: 3,
+        Title: 'Hash Only Result',
+      }],
+    }), { status: 200 });
+
+    ParserHook.init();
+
+    const received: any = await new Promise(resolve => {
+      Lampa.Parser!.get({ search: 'ubuntu' }, data => resolve(data));
+    });
+
+    // Without this the release reaches playback as link-only, and the
+    // non-persisting path -- which needs the hash in the request URL -- refuses
+    // a torrent the indexer had already identified.
+    assert.equal(received.Results[0].InfoHash, infoHash.toLowerCase());
+    assert.equal(received.Results[0].MagnetUri, '');
+    assert.equal(received.Results[0].Link, 'http://jackett.local:9117/dl/tracker/abc.torrent');
+    // `hash` stays the title hash: it identifies the card for the viewed list,
+    // not the torrent, and Lampa's stored `torrents_view` entries are keyed on it.
+    assert.equal(received.Results[0].hash, 'hash:Hash Only Result');
+  });
+
   it('forwards Lampa movie context to provider search', async () => {
     ProviderManager.addProvider({
       apiKey: 'k', id: 'p1', isEnabled: true, name: 'Jackett', type: 'jackett', url: 'http://jackett.local:9117',
