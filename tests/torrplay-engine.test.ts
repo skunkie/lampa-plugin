@@ -478,16 +478,25 @@ describe('TorrPlayEngine', () => {
     let isModalClosed = false;
     let modalOptions: any = null;
     let timelineRenderCount = 0;
+    let focusedRow: any = null;
+    let isModalReady = false;
 
     (globalThis as any).$ = (html: string) => {
       capturedHtml.push(html);
       const element: any = {
-        append: (_child: any) => element,
+        children: [],
+        append: (child: any) => { element.children.push(child); return element; },
         on: (_event: string, _callback: any) => element,
       };
       return element;
     };
     (globalThis as any).Lampa.Controller = {
+      collectionFocus: (target: any, container: any) => {
+        assert.equal(isModalReady, true, 'focus must follow modal visibility setup');
+        assert.equal(target, false);
+        assert.equal(container, modalOptions.html);
+        focusedRow = container.children[0];
+      },
       toggle: (name: string) => {
         activeController = name;
       },
@@ -501,6 +510,8 @@ describe('TorrPlayEngine', () => {
       },
       open: (options: any) => {
         modalOptions = options;
+        focusedRow = null;
+        isModalReady = true;
       },
     };
     (globalThis as any).Lampa.Template = {
@@ -535,6 +546,8 @@ describe('TorrPlayEngine', () => {
     );
 
     assert.ok(modalOptions);
+    assert.ok(focusedRow);
+    assert.equal(focusedRow, modalOptions.html.children[0]);
     assert.equal(modalOptions.mask, true);
     assert.equal(modalOptions.size, 'large');
     assert.equal(modalOptions.title, 'Files');

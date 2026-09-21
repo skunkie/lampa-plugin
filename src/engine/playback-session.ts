@@ -160,6 +160,8 @@ export async function displayFileList(
       size: 'large',
       title: Lampa.Lang?.translate('title_files') || 'Files',
     });
+    // Modal.open updates lazy row visibility after its initial focus attempt.
+    Lampa.Controller?.collectionFocus?.(false, fileListElement);
   };
 
   playlist.forEach((playlistItem, playlistIndex) => {

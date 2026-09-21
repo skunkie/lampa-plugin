@@ -783,6 +783,8 @@ export class TorrPlayTorrentsComponent {
         size: 'large',
         title,
       });
+      // Modal.open updates lazy row visibility after its initial focus attempt.
+      Lampa.Controller?.collectionFocus?.(false, fileListElement);
     };
 
     sortedFiles.forEach((file: TorrentFile, fallbackIndex: number) => {

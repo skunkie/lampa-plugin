@@ -1844,10 +1844,21 @@ describe('UI & Settings Integration', () => {
     let modalOptions: any = null;
     let isModalClosed = false;
     let timelineRenderCount = 0;
+    let focusedRow: any = null;
+    let isModalReady = false;
+    (globalThis as any).Lampa.Controller = {
+      ...((globalThis as any).Lampa.Controller || {}),
+      collectionFocus: (target: any, container: any) => {
+        assert.equal(isModalReady, true, 'focus must follow modal visibility setup');
+        assert.equal(target, false);
+        assert.equal(container, modalOptions.html);
+        focusedRow = container.children[0];
+      },
+    };
 
     (globalThis as any).Lampa.Modal = {
       close: () => { isModalClosed = true; },
-      open: (opts: any) => { modalOptions = opts; },
+      open: (opts: any) => { modalOptions = opts; focusedRow = null; isModalReady = true; },
     };
     (globalThis as any).Lampa.Utils = {
       bytesToSize: (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`,
@@ -1862,7 +1873,8 @@ describe('UI & Settings Integration', () => {
       const listeners: Record<string, any> = {};
       const el: any = {
         0: { style: {} },
-        append: (_child: any) => el,
+        children: [],
+        append: (child: any) => { el.children.push(child); return el; },
         find: (_selector: string) => el,
         on: (eventName: string, callback: any) => { listeners[eventName] = callback; return el; },
         __listeners: listeners,
@@ -1913,6 +1925,8 @@ describe('UI & Settings Integration', () => {
 
     // Should have opened a Modal, not a Select
     assert.ok(modalOptions, 'Lampa.Modal.open must be called for multi-file torrent');
+    assert.ok(focusedRow);
+    assert.equal(focusedRow, modalOptions.html.children[0]);
     assert.equal(modalOptions.title, 'Files');
     assert.equal(modalOptions.mask, true);
     assert.equal(modalOptions.size, 'large');
