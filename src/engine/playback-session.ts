@@ -236,30 +236,9 @@ export async function playTorrentFile(
     playlistItem.title ||
     playlistItem.fname ||
     'Torrent';
-  const originalTitle =
-    resolvedMovie?.original_title ||
-    resolvedMovie?.original_name ||
-    title;
-  const cardId =
-    resolvedMovie?.id ||
-    (torrentHash
-      ? (typeof Lampa !== 'undefined' && Lampa.Utils?.hash
-        ? Lampa.Utils.hash(torrentHash)
-        : torrentHash)
-      : Date.now());
-
-  const historyCard: LampaMovie = {
-    ...resolvedMovie,
-    id: cardId,
-    img: poster,
-    name: title,
-    original_name: originalTitle,
-    original_title: originalTitle,
-    poster,
-    release_date: resolvedMovie?.release_date || resolvedMovie?.first_air_date || '',
-    source: resolvedMovie?.source || 'torrplay',
-    title,
-  };
+  const historyCard: LampaMovie = resolvedMovie?.id !== undefined
+    ? { ...resolvedMovie }
+    : { ...resolvedMovie, img: poster, title };
 
   const shouldPreload = Lampa.Storage.get(PRELOAD_ENABLED_STORAGE_KEY, true);
 
@@ -372,7 +351,7 @@ export async function playTorrentFile(
     item.torrent = true;
   }
 
-  if (typeof Lampa !== 'undefined' && Lampa.Favorite && typeof Lampa.Favorite.add === 'function') {
+  if (historyCard.id !== undefined && typeof Lampa !== 'undefined' && typeof Lampa.Favorite?.add === 'function') {
     Lampa.Favorite.add('history', historyCard, 100);
   }
 

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { TorrPlayApi } from '../src/api/torrplay';
-import { displayFileList } from '../src/engine/playback-session';
+import { displayFileList, playTorrentFile } from '../src/engine/playback-session';
 import { TorrPlayEngine } from '../src/engine/torrplay-engine';
 import { InstanceManager } from '../src/instances/instance-manager';
 import { SAVE_TO_DATABASE_STORAGE_KEY } from '../src/ui/play-dialog';
@@ -1103,8 +1103,12 @@ describe('TorrPlayEngine', () => {
     assert.equal(favoriteTarget, 'history');
     assert.ok(favoriteCard);
     assert.equal(favoriteCard.id, 603);
-    assert.equal(favoriteCard.name, 'The Matrix');
+    assert.equal(favoriteCard.name, undefined);
+    assert.equal(favoriteCard.original_name, undefined);
+    assert.equal(favoriteCard.name ? 'tv' : 'movie', 'movie');
+    assert.equal(favoriteCard.original_name ? 'tv' : 'movie', 'movie');
     assert.equal(favoriteCard.title, 'The Matrix');
+    assert.deepEqual(favoriteCard, movieContext);
 
     assert.ok(playedItem);
     assert.equal(playedItem.card.id, 603);
@@ -1122,7 +1126,33 @@ describe('TorrPlayEngine', () => {
     assert.equal(listenerEvent.element.card.id, 603);
   });
 
-  it('synthesizes history card with deterministic ID and saves to history when movie context lacks an ID', async () => {
+  it('preserves TV and custom catalog identities in history and the player', async () => {
+    storageMap.set(PRELOAD_ENABLED_STORAGE_KEY, false);
+    const cards = [
+      { first_air_date: '2020-01-01', id: 123, name: 'Show', original_name: 'Original Show', source: 'tmdb' },
+      { id: 'custom-123', source: 'custom', title: 'Custom Movie' },
+    ];
+    for (const card of cards) {
+      let savedCard: any;
+      let playerCard: any;
+      (globalThis as any).Lampa.Favorite = { add: (_where: string, movie: any) => { savedCard = movie; } };
+      (globalThis as any).Lampa.Player = {
+        callback: () => {},
+        play: (item: any) => { playerCard = item.card; },
+        playlist: () => {},
+      };
+      await playTorrentFile(
+        { authType: 'none', id: 'test', name: 'Test', url: 'http://localhost:8090' },
+        'hash', 0, { title: 'video.mkv' }, [], card
+      );
+      assert.deepEqual(savedCard, card);
+      assert.deepEqual(playerCard, card);
+      assert.notEqual(savedCard, card);
+      assert.equal(savedCard.name ? 'tv' : 'movie', card.name ? 'tv' : 'movie');
+    }
+  });
+
+  it('plays standalone torrents without adding unresolvable catalog history entries', async () => {
     let favoriteCard: any = null;
     let favoriteTarget = '';
     let listenerEvent: any = null;
@@ -1179,19 +1209,17 @@ describe('TorrPlayEngine', () => {
       Title: 'Standalone Video',
     });
 
-    assert.equal(favoriteTarget, 'history');
-    assert.ok(favoriteCard);
-    assert.equal(favoriteCard.id, testHash);
-    assert.equal(favoriteCard.source, 'torrplay');
-    assert.equal(favoriteCard.title, 'Standalone Video');
+    assert.equal(favoriteTarget, '');
+    assert.equal(favoriteCard, null);
 
     assert.ok(playedItem);
-    assert.equal(playedItem.card.id, testHash);
-    assert.equal(playedItem.movie.id, testHash);
+    assert.equal(playedItem.card.id, undefined);
+    assert.equal(playedItem.card.title, 'Standalone Video');
+    assert.equal(playedItem.movie.id, undefined);
 
     assert.ok(listenerEvent);
     assert.equal(listenerEvent.type, 'onenter');
-    assert.equal(listenerEvent.params.movie.id, testHash);
+    assert.equal(listenerEvent.params.movie.id, undefined);
   });
 
   it('unwraps nested movie and card contexts and resolves from activity stack', () => {
