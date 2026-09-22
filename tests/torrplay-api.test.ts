@@ -47,6 +47,17 @@ describe('TorrPlayApi', () => {
     assert.equal(instance.latencyMs, Infinity);
   });
 
+  it('resolves a link without requesting file storage', async () => {
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      assert.ok(String(input).endsWith('/api/v1/torrent-resolutions'));
+      assert.equal(init?.method, 'POST');
+      assert.deepEqual(JSON.parse(String(init?.body)), { url: 'http://indexer.local/movie.torrent' });
+      return new Response(JSON.stringify({ files: [], hash: 'resolved' }));
+    };
+    const result = await TorrPlayApi.resolveTorrent(baseInstance, 'http://indexer.local/movie.torrent');
+    assert.equal(result.hash, 'resolved');
+  });
+
   it('adds torrent via POST /api/v1/torrents', async () => {
     const instance = { ...baseInstance };
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {

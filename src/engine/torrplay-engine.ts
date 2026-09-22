@@ -305,14 +305,17 @@ export class TorrPlayEngine {
 
     try {
       const instance = await InstanceManager.getBestInstance();
-      const torrentRequest = {
-        hash: torrentHash,
-        link: torrentLink,
-        magnet: magnetUri,
-        poster,
-        title,
-      };
-      const outcome = await this.withFailover(instance, i => TorrPlayApi.addTorrent(i, torrentRequest));
+      const outcome = await this.withFailover(instance, async i => {
+        const resolved = torrentLink
+          ? await TorrPlayApi.resolveTorrent(i, torrentLink)
+          : undefined;
+        return TorrPlayApi.addTorrent(i, {
+          hash: torrentHash,
+          magnet: resolved?.magnet || magnetUri,
+          poster,
+          title,
+        });
+      });
       SavedTorrents.markSaved(torrentHash || outcome.result?.hash, outcome.instance.id);
       if (Lampa.Noty) {
         Lampa.Noty.show(
@@ -370,10 +373,8 @@ export class TorrPlayEngine {
     const playOptions = await PlayDialog.resolveOptions(title);
     if (!playOptions) return; // User canceled dialog
 
-    // GET /api/v1/torrents/{hash} (the non-persisting path) requires the hash in
-    // the URL, unlike POST, which can derive it from the magnet server-side.
     const hasPersistableSource = Boolean(torrentHash || magnetUri || torrentLink);
-    const hasTemporarySource = Boolean(torrentHash);
+    const hasTemporarySource = Boolean(torrentHash || torrentLink);
     if (
       (playOptions.saveToDb && !hasPersistableSource)
       || (!playOptions.saveToDb && !hasTemporarySource)
@@ -415,27 +416,29 @@ export class TorrPlayEngine {
     let torrent: Torrent;
 
     try {
-      const outcome = playOptions.saveToDb
-        ? await this.withFailover(
-          instance,
-          i => TorrPlayApi.addTorrent(i, {
-            hash: torrentHash,
-            link: torrentLink,
-            magnet: magnetUri,
-            poster,
-            storage: playOptions.storage,
-            title,
-          }),
-          () => isCanceled
-        )
-        // GET never persists to the database, unlike addTorrent's POST.
-        : await this.withFailover(
-          instance,
-          i => TorrPlayApi.getTorrent(i, torrentHash as string, magnetUri),
-          () => isCanceled
-        );
+      const outcome = await this.withFailover(
+        instance,
+        async i => {
+          const resolved = torrentLink
+            ? await TorrPlayApi.resolveTorrent(i, torrentLink)
+            : undefined;
+          if (isCanceled) throw new Error('Playback canceled');
+          if (playOptions.saveToDb) {
+            return TorrPlayApi.addTorrent(i, {
+              hash: torrentHash,
+              magnet: resolved?.magnet || magnetUri,
+              poster,
+              storage: playOptions.storage,
+              title,
+            });
+          }
+          return resolved || TorrPlayApi.getTorrent(i, torrentHash as string, magnetUri);
+        },
+        () => isCanceled
+      );
       instance = outcome.instance;
       torrent = outcome.result;
+      if (isCanceled) return;
       if (playOptions.saveToDb) {
         SavedTorrents.markSaved(torrentHash || torrent.hash, outcome.instance.id);
       }

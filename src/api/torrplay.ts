@@ -7,6 +7,7 @@ import {
   PreloadResponse,
   Torrent,
   TorrentAdd,
+  TorrentResolutionRequest,
   TorrentsResponse,
   TorrentUpdate,
   TorrPlayInstance,
@@ -196,9 +197,6 @@ export class TorrPlayApi {
     return (await response.json()) as T;
   }
 
-  /**
-   * Adds a torrent via POST /api/v1/torrents.
-   */
   public static async addTorrent(
     instance: TorrPlayInstance,
     torrentRequest: TorrentAdd
@@ -282,6 +280,19 @@ export class TorrPlayApi {
     const query = magnet ? `?magnet=${encodeURIComponent(magnet)}` : '';
     return this.request<Torrent>(instance, `/api/v1/torrents/${hash}${query}`, {
       method: 'GET',
+    });
+  }
+
+  public static async resolveTorrent(
+    instance: TorrPlayInstance,
+    url: string
+  ): Promise<Torrent> {
+    const payload: TorrentResolutionRequest = { url };
+    return this.request<Torrent>(instance, '/api/v1/torrent-resolutions', {
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      timeoutMs: 35000,
     });
   }
 

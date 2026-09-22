@@ -64,6 +64,7 @@ src/
    - If an active instance becomes unresponsive or encounters network failures, automatic failover selects the next best reachable instance with notification to the user.
 
 3. **Storage Type & Database Persistence**:
+   - Only torrents saved to the database may use file storage. Unsaved torrents, including link-only releases resolved for temporary playback, must use memory storage.
    - Configurable per playback or default via settings:
      - Storage type: `memory` (RAM) or `file` (Disk).
      - Save to Database: `true` or `false`.

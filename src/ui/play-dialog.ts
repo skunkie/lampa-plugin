@@ -24,8 +24,6 @@ export class PlayDialog {
     if (!isAskStorage && !isAskDatabase) {
       return {
         saveToDb: isSaveToDatabase,
-        // Disk storage is only meaningful for a persisted torrent; the server
-        // always loads a non-persisted (Do Not Save) torrent into memory.
         storage: (isSaveToDatabase && savedStorageType === 'file' ? 'file' : 'memory') as TorrentStorage,
       };
     }

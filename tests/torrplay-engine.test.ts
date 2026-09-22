@@ -128,37 +128,45 @@ describe('TorrPlayEngine', () => {
     assert.ok(lastNoty && lastNoty.includes('added to database'));
   });
 
-  it('passes HTTP torrent download links to the persisting create endpoint', async () => {
-    const torrentLink = 'https://jackett.example.com/dl/indexer?id=release';
-    let addPayload: any = null;
+  for (const sourceHash of [undefined, '0123456789abcdef0123456789abcdef01234567']) {
+    const sourceDescription = sourceHash ? 'with an info hash' : 'without an info hash';
+    it(`resolves HTTP torrent download links before saving ${sourceDescription}`, async () => {
+      const torrentLink = 'https://jackett.example.com/dl/indexer?id=release';
+      let addPayload: any = null;
 
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.endsWith('/api/system/health')) {
-        return new Response(null, { status: 200 });
-      }
-      if (url.endsWith('/api/v1/torrents') && init?.method === 'POST') {
-        addPayload = JSON.parse(String(init.body));
-        return new Response(JSON.stringify({
-          files: [],
-          hash: '0123456789abcdef0123456789abcdef01234567',
-          name: 'Private Tracker Movie',
-          storage: 'memory',
-          total_size: 1000,
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-          status: 201,
-        });
-      }
-      throw new Error(`Unexpected request: ${init?.method} ${url}`);
-    };
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/system/health')) {
+          return new Response(null, { status: 200 });
+        }
+        if (url.endsWith('/api/v1/torrent-resolutions')) {
+          assert.equal(init?.method, 'POST');
+          assert.deepEqual(JSON.parse(String(init?.body)), { url: torrentLink });
+          return new Response(JSON.stringify({ hash: '0123456789abcdef0123456789abcdef01234567', magnet: 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567' }));
+        }
+        if (url.endsWith('/api/v1/torrents') && init?.method === 'POST') {
+          addPayload = JSON.parse(String(init.body));
+          return new Response(JSON.stringify({
+            files: [],
+            hash: '0123456789abcdef0123456789abcdef01234567',
+            name: 'Private Tracker Movie',
+            storage: 'memory',
+            total_size: 1000,
+          }), {
+            headers: { 'Content-Type': 'application/json' },
+            status: 201,
+          });
+        }
+        throw new Error(`Unexpected request: ${init?.method} ${url}`);
+      };
 
-    await TorrPlayEngine.saveToDatabase({ Link: torrentLink, Title: 'Private Tracker Movie' });
+      await TorrPlayEngine.saveToDatabase({ InfoHash: sourceHash, Link: torrentLink, Title: 'Private Tracker Movie' });
 
-    assert.equal(addPayload.link, torrentLink);
-    assert.equal(addPayload.hash, undefined);
-    assert.equal(addPayload.magnet, undefined);
-  });
+      assert.equal(addPayload.link, undefined);
+      assert.equal(addPayload.hash, '0123456789abcdef0123456789abcdef01234567');
+      assert.equal(addPayload.magnet, 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567');
+    });
+  }
 
   it('resolves relative movie poster to absolute URL and saves it to database', async () => {
     let addPayload: any = null;
@@ -721,46 +729,146 @@ describe('TorrPlayEngine', () => {
     assert.equal(addMethodUsed, 'POST');
   });
 
-  it('startPlayback persists an HTTP torrent download link when database saving is enabled', async () => {
-    const testHash = '0123456789abcdef0123456789abcdef01234567';
-    const torrentLink = 'https://prowlarr.example.com/1/download?id=release';
-    let addPayload: any = null;
+  for (const sourceHash of [undefined, '0123456789abcdef0123456789abcdef01234567']) {
+    const sourceDescription = sourceHash ? 'with an info hash' : 'without an info hash';
+    it(`startPlayback persists an HTTP torrent download link ${sourceDescription} when database saving is enabled`, async () => {
+      const testHash = '0123456789abcdef0123456789abcdef01234567';
+      const torrentLink = 'https://prowlarr.example.com/1/download?id=release';
+      let addPayload: any = null;
 
-    (globalThis as any).Lampa.Controller = {
-      enabled: () => ({ name: 'content' }),
-      toggle: () => {},
+      (globalThis as any).Lampa.Controller = {
+        enabled: () => ({ name: 'content' }),
+        toggle: () => {},
+      };
+      (globalThis as any).Lampa.Loading = { setProgress: () => {}, start: () => {}, stop: () => {} };
+      (globalThis as any).Lampa.Player = { callback: () => {}, play: () => {}, playlist: () => {} };
+      storageMap.set(SAVE_TO_DATABASE_STORAGE_KEY, 'true');
+      storageMap.set(PRELOAD_ENABLED_STORAGE_KEY, false);
+
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/api/system/health')) {
+          return new Response(null, { status: 200 });
+        }
+        if (url.endsWith('/api/v1/torrent-resolutions')) {
+          assert.equal(init?.method, 'POST');
+          assert.deepEqual(JSON.parse(String(init?.body)), { url: torrentLink });
+          return new Response(JSON.stringify({ hash: '0123456789abcdef0123456789abcdef01234567', magnet: 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567' }));
+        }
+        if (url.endsWith('/api/v1/torrents') && init?.method === 'POST') {
+          addPayload = JSON.parse(String(init.body));
+          return new Response(JSON.stringify({
+            files: [{ length: 1000, name: 'video.mkv', path: 'video.mkv' }],
+            hash: testHash,
+            name: 'Private Tracker Movie',
+            storage: 'memory',
+            total_size: 1000,
+          }), {
+            headers: { 'Content-Type': 'application/json' },
+            status: 201,
+          });
+        }
+        throw new Error(`Unexpected request: ${init?.method} ${url}`);
+      };
+
+      await TorrPlayEngine.startPlayback({ InfoHash: sourceHash, Link: torrentLink, Title: 'Private Tracker Movie' });
+
+      assert.equal(addPayload.link, undefined);
+      assert.equal(addPayload.hash, '0123456789abcdef0123456789abcdef01234567');
+      assert.equal(addPayload.magnet, 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567');
+    });
+  }
+
+  for (const sourceHash of [undefined, '0123456789abcdef0123456789abcdef01234567']) {
+    const sourceDescription = sourceHash ? 'with an info hash' : 'without an info hash';
+    for (const storage of ['memory', 'file']) {
+      it(`resolves a link for temporary playback in memory with ${storage} selected ${sourceDescription}`, async () => {
+        const hash = '0123456789abcdef0123456789abcdef01234567';
+        const link = 'http://indexer.local/download/1';
+        let playedItem: any;
+        let resolveCalls = 0;
+        (globalThis as any).Lampa.Loading = { start: () => {}, stop: () => {} };
+        (globalThis as any).Lampa.Player = {
+          callback: () => {},
+          play: (item: any) => { playedItem = item; },
+          playlist: () => {},
+        };
+        storageMap.set(SAVE_TO_DATABASE_STORAGE_KEY, 'false');
+        storageMap.set('torrplay_storage_type', storage);
+        storageMap.set(PRELOAD_ENABLED_STORAGE_KEY, false);
+        globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = String(input);
+          if (url.endsWith('/api/system/health')) return new Response(null, { status: 200 });
+          assert.ok(url.endsWith('/api/v1/torrent-resolutions'), `unexpected request: ${url}`);
+          assert.equal(init?.method, 'POST');
+          assert.deepEqual(JSON.parse(String(init?.body)), { url: link });
+          resolveCalls++;
+          return new Response(JSON.stringify({
+            files: [{ length: 1000, name: 'video.mkv', path: 'video.mkv' }],
+            hash,
+            magnet: `magnet:?xt=urn:btih:${hash}`,
+            name: 'Movie',
+            storage: 'memory',
+            total_size: 1000,
+          }));
+        };
+        await TorrPlayEngine.startPlayback({ InfoHash: sourceHash, Link: link, Title: 'Movie' });
+        assert.equal(resolveCalls, 1);
+        assert.ok(playedItem.url.includes(hash));
+      });
+    }
+  }
+
+  it('does not persist or play when canceled during link resolution', async () => {
+    let cancel: () => void = () => {};
+    let resolveCalls = 0;
+    let torrentRequests = 0;
+    (globalThis as any).Lampa.Controller = { toggle: () => {} };
+    (globalThis as any).Lampa.Loading = {
+      start: (callback: () => void) => { cancel = callback; },
+      stop: () => {},
     };
-    (globalThis as any).Lampa.Loading = { setProgress: () => {}, start: () => {}, stop: () => {} };
-    (globalThis as any).Lampa.Player = { callback: () => {}, play: () => {}, playlist: () => {} };
+    (globalThis as any).Lampa.Player = { play: () => assert.fail('must not play') };
     storageMap.set(SAVE_TO_DATABASE_STORAGE_KEY, 'true');
-    storageMap.set(PRELOAD_ENABLED_STORAGE_KEY, false);
-
-    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith('/api/system/health')) {
-        return new Response(null, { status: 200 });
-      }
-      if (url.endsWith('/api/v1/torrents') && init?.method === 'POST') {
-        addPayload = JSON.parse(String(init.body));
-        return new Response(JSON.stringify({
-          files: [{ length: 1000, name: 'video.mkv', path: 'video.mkv' }],
-          hash: testHash,
-          name: 'Private Tracker Movie',
-          storage: 'memory',
-          total_size: 1000,
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-          status: 201,
-        });
-      }
-      throw new Error(`Unexpected request: ${init?.method} ${url}`);
+      if (url.endsWith('/api/system/health')) return new Response(null, { status: 200 });
+      torrentRequests++;
+      assert.ok(url.endsWith('/api/v1/torrent-resolutions'), 'must not save after cancellation');
+      resolveCalls++;
+      cancel();
+      return new Response(JSON.stringify({ hash: 'resolved', magnet: 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567' }));
     };
+    await TorrPlayEngine.startPlayback({ Link: 'http://indexer.local/torrent' });
+    assert.equal(resolveCalls, 1);
+    assert.equal(torrentRequests, 1);
+  });
 
-    await TorrPlayEngine.startPlayback({ Link: torrentLink, Title: 'Private Tracker Movie' });
-
-    assert.equal(addPayload.link, torrentLink);
-    assert.equal(addPayload.hash, undefined);
-    assert.equal(addPayload.magnet, undefined);
+  it('resolves again on the fallback instance before saving a link', async () => {
+    const primary = { authType: 'none' as const, id: 'primary', name: 'Primary', url: 'http://primary.example.com' };
+    const fallback = { ...primary, id: 'fallback', url: 'http://fallback.example.com' };
+    const originalBest = InstanceManager.getBestInstance;
+    const originalFailover = InstanceManager.failover;
+    const requests: string[] = [];
+    InstanceManager.getBestInstance = async () => primary;
+    InstanceManager.failover = async () => fallback;
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requests.push(url);
+      if (url === `${primary.url}/api/v1/torrents`) return new Response(null, { status: 503 });
+      return new Response(JSON.stringify({ hash: '0123456789abcdef0123456789abcdef01234567', magnet: 'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567' }));
+    };
+    try {
+      await TorrPlayEngine.saveToDatabase({ Link: 'http://indexer.local/torrent' });
+      assert.deepEqual(requests, [
+        `${primary.url}/api/v1/torrent-resolutions`, `${primary.url}/api/v1/torrents`,
+        `${fallback.url}/api/v1/torrent-resolutions`, `${fallback.url}/api/v1/torrents`,
+      ]);
+      assert.ok(lastNoty?.includes('added to database'));
+    } finally {
+      InstanceManager.getBestInstance = originalBest;
+      InstanceManager.failover = originalFailover;
+    }
   });
 
   it('startPlayback resolves via GET /api/v1/torrents/{hash} without persisting when Save to Database is disabled', async () => {

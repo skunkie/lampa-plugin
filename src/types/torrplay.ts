@@ -58,11 +58,14 @@ export interface TorrentsResponse {
 
 export interface TorrentAdd {
   hash?: string,
-  link?: string,
   magnet?: string,
   poster?: string,
   storage?: TorrentStorage,
   title?: string
+}
+
+export interface TorrentResolutionRequest {
+  url: string
 }
 
 export interface TorrentUpdate {
