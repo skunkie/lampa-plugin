@@ -45,6 +45,10 @@ var i18n = {
     step2: 'Click <strong>Add Plugin</strong> (<code>Добавить плагин</code>).',
     step3: 'Paste the copied <strong>Production URL</strong> (<code>torrplay.min.js</code>) and confirm.',
     step4: 'Restart Lampa. A dedicated <strong>TorrPlay</strong> entry will appear in <strong>Settings</strong> (<code>Настройки</code>) and the main sidebar.',
+    channelBannerBadge: 'Dev Preview',
+    channelBannerText: 'You are viewing the development channel. For general use, switch to the <a href="../">stable release</a>.',
+    navDevChannel: 'Dev Channel ↗',
+    navProdChannel: 'Stable Release ↗',
     footer: 'TorrPlay is open-source under the <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener" style="color: var(--accent); text-decoration: none;">MIT License</a>.'
   },
   ru: {
@@ -55,6 +59,10 @@ var i18n = {
     navInstall: 'Установка',
     navDocs: 'Документация ↗',
     navTorrPlay: 'TorrPlay ↗',
+    channelBannerBadge: 'Dev-канал',
+    channelBannerText: 'Вы просматриваете сборку для разработки. Для стабильной работы перейдите на <a href="../">стабильную версию</a>.',
+    navDevChannel: 'Dev-сборка ↗',
+    navProdChannel: 'Стабильная версия ↗',
     heroTitle: 'Торрент-стриминг для <span class="hero-title-gradient">Lampa</span>',
     heroSubtitle: 'Плагин для воспроизведения торрентов в Lampa с буферизацией и пулом инстансов.',
     prerequisiteTag: 'Требование',

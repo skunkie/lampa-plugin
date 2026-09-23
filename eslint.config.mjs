@@ -42,7 +42,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['dist/**', 'node_modules/**', '*.config.mjs', 'build.mjs'],
+    ignores: ['dist/**', 'node_modules/**', '*.config.mjs', 'build.mjs', 'build-pages.mjs'],
   },
   {
     files: ['src/**/*.ts', 'tests/**/*.ts'],

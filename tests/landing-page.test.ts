@@ -22,7 +22,7 @@ describe('Landing Page', () => {
     assert.match(first, /Торрент-стриминг для/);
     assert.match(first, /<style>[\s\S]+:root/);
     assert.match(first, /<script>[\s\S]+var i18n/);
-    assert.match(first, /@media \(max-width: 860px\)[\s\S]+\.nav-mobile-toggle/);
+    assert.match(first, /@media \(max-width: 1080px\)[\s\S]+\.nav-mobile-toggle/);
     assert.match(first, /\.code-input \{[\s\S]+min-width: 0/);
     assert.match(first, /@media \(max-width: 420px\)[\s\S]+\.brand-badge/);
     assert.match(first, /This plugin is a client for Lampa/);
@@ -38,6 +38,27 @@ describe('Landing Page', () => {
 
     assert.match(html, /v&lt;1&amp;&quot;&#39;&gt;/);
     assert.doesNotMatch(html, /v<1&"'>/);
+  });
+
+  it('renders production channel with link to dev and no warning banner', () => {
+    const html = generateLandingPage('1.2.3', undefined, 'production');
+
+    assert.match(html, /href="\.\/dev\/"/);
+    assert.match(html, /Dev Channel ↗/);
+    assert.match(html, /class="brand-badge" title="v1\.2\.3">v1\.2\.3<\/span>/);
+    assert.doesNotMatch(html, /class="channel-banner"/);
+    assert.doesNotMatch(html, /\{\{[A-Z_]+\}\}/);
+  });
+
+  it('renders dev channel with link to production and dev warning banner', () => {
+    const html = generateLandingPage('1.2.3-dev+ba5c007', undefined, 'dev');
+
+    assert.match(html, /href="\.\.\/"/);
+    assert.match(html, /Stable Release ↗/);
+    assert.match(html, /class="channel-banner"/);
+    assert.match(html, /Dev Preview/);
+    assert.match(html, /class="brand-badge brand-badge-dev" title="v1\.2\.3-dev\+ba5c007">v1\.2\.3-dev\+ba5c007<\/span>/);
+    assert.doesNotMatch(html, /\{\{[A-Z_]+\}\}/);
   });
 
   it('rejects a template missing a required placeholder', () => {

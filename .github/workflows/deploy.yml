@@ -6,13 +6,23 @@ name: Deploy Plugin to GitHub Pages
 
 on:
   push:
+    branches:
+      - main
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to deploy (SemVer, no leading 'v')"
+      channel:
+        description: "Target channel ('dev' or 'release')"
         required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - release
+      version:
+        description: "Version override (required for release if no tag)"
+        required: false
 
 permissions:
   contents: read
@@ -33,22 +43,33 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Resolve version
-        id: version
+      - name: Resolve deployment mode and version
+        id: mode
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            mode="${{ inputs.channel }}"
             version="${{ inputs.version }}"
-          else
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            mode="release"
             version="${GITHUB_REF_NAME#v}"
+          else
+            mode="dev"
+            version=""
           fi
 
-          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Invalid version '$version' (expected SemVer, e.g. 1.2.3)"
-            exit 1
+          if [ "$mode" = "release" ]; then
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Invalid release version '$version' (expected SemVer, e.g. 1.2.3)"
+              exit 1
+            fi
           fi
 
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "is_release=$([ "$mode" = "release" ] && echo "true" || echo "false")" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -68,10 +89,16 @@ jobs:
       - name: Test and coverage
         run: npm run coverage
 
-      - name: Build plugin and landing page
-        run: npm run build
+      - name: Build Pages Site
+        run: |
+          ARGS="--mode ${{ steps.mode.outputs.mode }} --outdir dist-pages"
+          if [ -n "${{ steps.mode.outputs.version }}" ]; then
+            ARGS="$ARGS --version ${{ steps.mode.outputs.version }}"
+          fi
+          node build-pages.mjs $ARGS
         env:
-          PLUGIN_VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
@@ -79,25 +106,25 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: ./dist
+          path: ./dist-pages
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
 
       - name: Upload bundle artifacts
-        if: github.event_name == 'push'
+        if: steps.mode.outputs.is_release == 'true' && github.event_name == 'push'
         uses: actions/upload-artifact@v7
         with:
           name: release-bundles
           path: |
-            dist/torrplay.js
-            dist/torrplay.js.map
-            dist/torrplay.min.js
+            dist-pages/torrplay.js
+            dist-pages/torrplay.js.map
+            dist-pages/torrplay.min.js
 
   changelog:
     name: Generate Changelog
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     outputs:
       release_body: ${{ steps.git-cliff.outputs.content }}
@@ -119,7 +146,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: [build-and-deploy, changelog]
     runs-on: ubuntu-latest
     permissions:

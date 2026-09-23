@@ -2,4 +2,8 @@
 //
 // SPDX-License-Identifier: MIT
 
-export function generateLandingPage(pluginVersion: string, sourceDirectory?: URL): string;
+export function generateLandingPage(
+  pluginVersion: string,
+  sourceDirectory?: URL,
+  channel?: 'dev' | 'production',
+): string;
