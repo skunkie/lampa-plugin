@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 TorrPlay
+#
+# SPDX-License-Identifier: MIT
+
+name: Feature request
+description: Suggest a change or addition.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The plugin stays a single dependency-free script that works with a TV remote on Android TV, Tizen, webOS and browsers, and talks to TorrPlay only through its own API. A request that fits those goals is the easiest to accept.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do and why it is not possible or is awkward today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The behavior you have in mind, and any alternatives you considered.
+    validations:
+      required: true
+  - type: textarea
+    id: lampa
+    attributes:
+      label: Lampa's behavior
+      description: If Lampa or its native TorrServer integration already does this, say how, so the plugin can match it. Leave empty if it does not apply.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues for this request.
+          required: true
